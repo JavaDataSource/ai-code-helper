@@ -40,5 +40,45 @@ marked.use({
 export function renderMarkdown(text) {
   const html = marked.parse(text ?? '')
   // AI 内容来自外部大模型，统一消毒后再通过 v-html 渲染，防止 XSS
-  return DOMPurify.sanitize(html)
+  const clean = DOMPurify.sanitize(html)
+  // 在消毒之后注入代码块头部（仅包含我们自己的静态结构，不会引入外部内容）
+  return decorateCodeBlocks(clean)
+}
+
+/**
+ * 给每个代码块包裹一层容器，加入「语言标签 + 一键复制」头部。
+ * 复制按钮不绑定事件（v-html 无法附加监听），由消息列表通过事件委托统一处理。
+ */
+function decorateCodeBlocks(html) {
+  const container = document.createElement('div')
+  container.innerHTML = html
+
+  container.querySelectorAll('pre > code').forEach((code) => {
+    const pre = code.parentElement
+    // 已包裹过的不重复处理
+    if (pre.parentElement?.classList.contains('code-block')) return
+
+    // 从 hljs 的 language-xxx 类名中提取语言标签
+    const langClass = Array.from(code.classList).find((c) => c.startsWith('language-'))
+    const lang = langClass ? langClass.slice('language-'.length) : ''
+
+    const wrapper = document.createElement('div')
+    wrapper.className = 'code-block'
+
+    const header = document.createElement('div')
+    header.className = 'code-block-header'
+    const langLabel = document.createElement('span')
+    langLabel.className = 'code-block-lang'
+    langLabel.textContent = lang || '代码'
+    const copyBtn = document.createElement('button')
+    copyBtn.type = 'button'
+    copyBtn.className = 'code-copy-btn'
+    copyBtn.textContent = '复制'
+    header.append(langLabel, copyBtn)
+
+    pre.replaceWith(wrapper)
+    wrapper.append(header, pre)
+  })
+
+  return container.innerHTML
 }

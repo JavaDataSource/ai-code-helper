@@ -21,6 +21,52 @@ const inputRef = ref(null)
 // 记录当前正在进行的流式请求的 abort 函数
 let abortCurrent = null
 
+// 把文本写入剪贴板：优先用 clipboard API；若被权限/焦点策略拒绝，
+// 或当前非安全上下文（非 HTTPS/localhost），降级为 execCommand 兜底
+const copyText = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // NotAllowedError 等情况：继续走下方兜底方案
+    }
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!ok) throw new Error('copy failed')
+}
+
+// 代码块复制按钮：v-html 渲染的内容无法直接绑定事件，
+// 因此在消息列表上做事件委托，统一拦截 .code-copy-btn 的点击
+const handleChatListClick = async (e) => {
+  const btn = e.target.closest('.code-copy-btn')
+  if (!btn) return
+  const code = btn.closest('.code-block')?.querySelector('pre code')
+  if (!code) return
+
+  try {
+    await copyText(code.innerText)
+    btn.textContent = '已复制'
+    btn.classList.add('copied')
+  } catch {
+    btn.textContent = '复制失败'
+  }
+  // 每个按钮独立的还原定时器，避免多条代码块互相干扰
+  clearTimeout(btn._copyTimer)
+  btn._copyTimer = setTimeout(() => {
+    btn.textContent = '复制'
+    btn.classList.remove('copied')
+  }, 1500)
+}
+
 const initMemoryId = () => {
   // 生成一个会话 id：时间戳*2 保证数字较大且与前一次不同，
   // 也可以根据业务替换成随机数 / 后端生成的 id 等
@@ -129,7 +175,7 @@ const suggestions = [
       </div>
     </header>
 
-    <main ref="messageListRef" class="chat-list">
+    <main ref="messageListRef" class="chat-list" @click="handleChatListClick">
       <div
         v-for="(msg, index) in messages"
         :key="index"

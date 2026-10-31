@@ -1,6 +1,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { chatStream } from './api/chat'
+import { renderMarkdown } from './utils/markdown'
 
 // 消息角色
 const ROLE_USER = 'user'
@@ -138,11 +139,16 @@ const suggestions = [
         <div v-if="msg.role === 'ai'" class="avatar">🤖</div>
         <div class="bubble-wrap">
           <div class="bubble">
-            <span class="bubble-text">{{ msg.content }}</span>
-            <span
-              v-if="msg.role === 'ai' && streaming && index === messages.length - 1 && msg.content"
-              class="cursor"
-            ></span>
+            <!-- AI 消息：渲染为 Markdown（含代码高亮），内容已经 DOMPurify 消毒 -->
+            <template v-if="msg.role === 'ai'">
+              <div class="md-body" v-html="renderMarkdown(msg.content)"></div>
+              <span
+                v-if="streaming && index === messages.length - 1 && msg.content"
+                class="cursor"
+              ></span>
+            </template>
+            <!-- 用户消息：纯文本展示，避免 XSS -->
+            <span v-else class="bubble-text">{{ msg.content }}</span>
           </div>
           <div class="meta">{{ msg.role === 'user' ? '我' : 'AI 助手' }} · {{ msg.time }}</div>
         </div>
